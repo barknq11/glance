@@ -1,0 +1,43 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x64
+          - os: ubuntu-22.04
+            name: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev
+      - run: cargo test --release
+      - run: cargo build --release
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist/Glance | Out-Null
+          Copy-Item target/release/glance.exe, packaging/windows/*.ps1, README.md dist/Glance/
+          Compress-Archive dist/Glance/* dist/Glance-${{ matrix.name }}.zip
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist/glance
+          cp target/release/glance packaging/linux/install.sh packaging/linux/*.desktop README.md dist/glance/
+          tar -C dist -czf dist/Glance-${{ matrix.name }}.tar.gz glance
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Glance-${{ matrix.name }}
+          path: dist/Glance-*
